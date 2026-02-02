@@ -1,11 +1,17 @@
 package main
 
 import (
-	"encoding/json"
+	"categories/database"
+	"categories/handlers"
+	"categories/repositories"
+	"categories/services"
 	"fmt"
+	"log"
 	"net/http"
-	"strconv"
+	"os"
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 type Categories struct {
@@ -20,115 +26,149 @@ var category = []Categories{
 	{ID: 3, Nama: "SMA", Description: "Sekolah Menegah Atas"},
 }
 
-func getCategoryByID(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/categories/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
-		return
-	}
+// func getCategoryByID(w http.ResponseWriter, r *http.Request) {
+// 	idStr := strings.TrimPrefix(r.URL.Path, "/categories/")
+// 	id, err := strconv.Atoi(idStr)
+// 	if err != nil {
+// 		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
+// 		return
+// 	}
 
-	for _, p := range category {
-		if p.ID == id {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(p)
-			return
-		}
-	}
+// 	for _, p := range category {
+// 		if p.ID == id {
+// 			w.Header().Set("Content-Type", "application/json")
+// 			json.NewEncoder(w).Encode(p)
+// 			return
+// 		}
+// 	}
 
-	http.Error(w, "Category Belum ada", http.StatusNotFound)
-}
+// 	http.Error(w, "Category Belum ada", http.StatusNotFound)
+// }
 
-func updateCategory(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/categories/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
-		return
-	}
+// func updateCategory(w http.ResponseWriter, r *http.Request) {
+// 	idStr := strings.TrimPrefix(r.URL.Path, "/categories/")
+// 	id, err := strconv.Atoi(idStr)
+// 	if err != nil {
+// 		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
+// 		return
+// 	}
 
-	var updateCategory Categories
-	err = json.NewDecoder(r.Body).Decode(&updateCategory)
-	if err != nil {
-		http.Error(w, "Invalid Request", http.StatusBadRequest)
-		return
-	}
+// 	var updateCategory Categories
+// 	err = json.NewDecoder(r.Body).Decode(&updateCategory)
+// 	if err != nil {
+// 		http.Error(w, "Invalid Request", http.StatusBadRequest)
+// 		return
+// 	}
 
-	for i := range category {
-		if category[i].ID == id {
-			updateCategory.ID = id
-			category[i] = updateCategory
+// 	for i := range category {
+// 		if category[i].ID == id {
+// 			updateCategory.ID = id
+// 			category[i] = updateCategory
 
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(updateCategory)
-			return
-		}
-	}
-	http.Error(w, "Category Belum ada", http.StatusNotFound)
+// 			w.Header().Set("Content-Type", "application/json")
+// 			json.NewEncoder(w).Encode(updateCategory)
+// 			return
+// 		}
+// 	}
+// 	http.Error(w, "Category Belum ada", http.StatusNotFound)
 
 
-}
+// }
 
-func deleteCategory(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/categories/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
-		return
-	}
+// func deleteCategory(w http.ResponseWriter, r *http.Request) {
+// 	idStr := strings.TrimPrefix(r.URL.Path, "/categories/")
+// 	id, err := strconv.Atoi(idStr)
+// 	if err != nil {
+// 		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
+// 		return
+// 	}
 
-	for i, p := range category {
-		if p.ID == id {
-			category = append(category[:i], category[i+1:]...)
+// 	for i, p := range category {
+// 		if p.ID == id {
+// 			category = append(category[:i], category[i+1:]...)
 			
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{
-				"message": "sukses delete",
-			})
-			return
-		}
-	}
-	http.Error(w, "Category Belum ada", http.StatusNotFound)
+// 			w.Header().Set("Content-Type", "application/json")
+// 			json.NewEncoder(w).Encode(map[string]string{
+// 				"message": "sukses delete",
+// 			})
+// 			return
+// 		}
+// 	}
+// 	http.Error(w, "Category Belum ada", http.StatusNotFound)
+// }
+
+type Config struct {
+	Port   string `mapstructure:"PORT"`
+	DBConn string `mapstructure:"DB_CONN"`
 }
 
 func main(){
-	http.HandleFunc("/categories/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			getCategoryByID(w,r)		
-		} else if r.Method == "PUT" {
-			updateCategory(w,r)
-		} else if  r.Method == "DELETE" {
-			deleteCategory(w,r)
-		}
-		
-	}) 
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	if _, err := os.Stat(".env"); err == nil {
+		viper.SetConfigFile(".env")
+		_ = viper.ReadInConfig()
+	}
+
+	config := Config{
+		Port:   viper.GetString("PORT"),
+		DBConn: viper.GetString("DB_CONN"),
+	}
+
+	db, err := database.InitDB(config.DBConn)
+	if err != nil {
+		log.Fatal("Failed to initialize database:", err)
+	}
+	defer db.Close()
+
 	
-	http.HandleFunc("/categories", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(category)
+	categoryRepo := repositories.NewCategoryRepository(db)
+	categoryService := services.NewCategoryService(categoryRepo)
+	categoryHandler := handlers.NewCategoryHandler(categoryService)
+	
+	
+	http.HandleFunc("/categories", categoryHandler.HandleCategories)
+	http.HandleFunc("/categories/", categoryHandler.HandleCategoryByID)
+
+	// http.HandleFunc("/categories/", func(w http.ResponseWriter, r *http.Request) {
+	// 	if r.Method == "GET" {
+	// 		getCategoryByID(w,r)		
+	// 	} else if r.Method == "PUT" {
+	// 		updateCategory(w,r)
+	// 	} else if  r.Method == "DELETE" {
+	// 		deleteCategory(w,r)
+	// 	}
+		
+	// }) 
+	
+	// http.HandleFunc("/categories", func(w http.ResponseWriter, r *http.Request) {
+	// 	if r.Method == "GET" {
+	// 		w.Header().Set("Content-Type", "application/json")
+	// 		json.NewEncoder(w).Encode(category)
 			
-		} else if r.Method == "POST" {
-			var categoryBaru Categories
-			err := json.NewDecoder(r.Body).Decode(&categoryBaru)
-			if err != nil {
-				http.Error(w, "Invalid Request", http.StatusBadRequest)
-				return
-			}
+	// 	} else if r.Method == "POST" {
+	// 		var categoryBaru Categories
+	// 		err := json.NewDecoder(r.Body).Decode(&categoryBaru)
+	// 		if err != nil {
+	// 			http.Error(w, "Invalid Request", http.StatusBadRequest)
+	// 			return
+	// 		}
 
-			categoryBaru.ID = len(category) + 1
-			category = append(category, categoryBaru)
+	// 		categoryBaru.ID = len(category) + 1
+	// 		category = append(category, categoryBaru)
 
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(categoryBaru)
+	// 		w.WriteHeader(http.StatusCreated)
+	// 		json.NewEncoder(w).Encode(categoryBaru)
 
-		}
-	})
+	// 	}
+	// })
 
-	fmt.Println("server running di localhost:8080")
+	addr := "localhost:" + config.Port
+	fmt.Println(addr)
 
-	err := http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(addr, nil)
 	if err != nil{
-		fmt.Println("gagal running server")
+		fmt.Println("gagal running server", err)
 	}
 }
